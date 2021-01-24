@@ -2,7 +2,7 @@ import json
 import numpy as np
 import pandas as pd
 from xlsxwriter.utility import xl_cell_to_rowcol as xl
-import reports.googleapi.client
+import googleapi.client
 
 
 class SpreadSheet():
@@ -11,11 +11,13 @@ class SpreadSheet():
     def __init__(self, client=None, response=None, **kwargs):
 
         if client is None:
-            client = reports.googleapi.client.Client()
+            client = googleapi.client.Client()
         self.client = client
 
         if response is None:
             response = self.create(**kwargs)
+        elif isinstance(response, str):
+            response = self.get_workbook(id=response)
 
         if isinstance(response, dict):
             prop = response['properties']
@@ -107,17 +109,25 @@ class SpreadSheet():
 
         return response
 
-    def get_sheet(self, index=None, title=None):
+    def get_workbook(self, id):
+        """Retrive an existing workbook by ID"""
+        request = self.client.api['sheets'].spreadsheets().get(
+            spreadsheetId=id)
+        response = self.client._execute_requests(request)
+
+        return response
+
+    def get_sheet(self, index):
         """Returns the worksheet with the specified index or title. Index by
         title first, and then by index.
         """
         sheets = self._sheets
 
-        if not isinstance(title, str) and not isinstance(index, int):
+        if not isinstance(index, (str, int)):
             ValueError('Specify integer index or title')
 
-        if isinstance(title, str):
-            sheets = [_ for _ in sheets if getattr(_, 'title') == title]
+        if isinstance(index, str):
+            sheets = [_ for _ in sheets if getattr(_, 'title') == index]
         if isinstance(index, int):
             sheets = [_ for _ in sheets if getattr(_, 'index') == index]
 
@@ -263,6 +273,20 @@ class Sheet():
         response = sh.client._execute_requests(request)
 
         data = DataRange(response, data, sheetId=self.id)
+        self._spreadsheet._current_datarange = data
+
+        return data
+
+    def get_values(self, range):
+        """Get the values of a spreadsheet."""
+        sh = self._spreadsheet
+        request = sh.client.api['sheets'].spreadsheets().values().get(
+            spreadsheetId=sh.id,
+            range=f'{self.title}!{range}'
+        )
+        response = sh.client._execute_requests(request)
+
+        data = DataRange(response, sheetId=self.id)
         self._spreadsheet._current_datarange = data
 
         return data
@@ -452,26 +476,46 @@ class Grid():
 class DataRange():
     """ """
 
-    def __init__(self, response, data, sheetId=None):
+    def __init__(self, response, data=None, sheetId=None):
         self._spreadsheetId = response.get('spreadsheetId')
 
-        rng = response.get('updatedRange').split('!')
-        s, e = rng[1].split(':')
-        s, e = xl(s), xl(e)
+        rng = response.get('updatedRange', response.get('range')).split('!')
+        if data is None:
+            data = response.get('values')
+
+        if isinstance(data, type(None)):
+            raise ValueError('Data cannot be None')
+        if not isinstance(data, pd.DataFrame):
+            data = pd.DataFrame(
+                data[1:], columns=[_.strip() for _ in data[0]])
+
+        # Data Massage (May cause problems)
+        data = data.replace(
+            '[\$,)]', '', regex=True).replace('[(]', '-', regex=True)
+        for col in data.columns:
+            try:
+                data[col] = pd.to_numeric(data[col])
+                data[col].fillna(0, inplace=True)
+            except ValueError:
+                data[col] = pd.to_datetime(data[col], errors='ignore')
+
+        self._data = data
 
         self._sheetId = sheetId
         self._sheetTitle = None
         if self._sheetId is None:
             self._sheetTitle = rng[0]
 
-        self._startRowIndex = s[0]
-        self._endRowIndex = e[0] + 1
-        self._startColumnIndex = s[1]
-        self._endColumnIndex = e[1] + 1
+        ind = rng[1].split(':')[0]
+        if not ind[-1].isdigit():
+            ind += '1'
+        ind = xl(ind)
 
-        if not isinstance(data, pd.DataFrame):
-            data = pd.DataFrame(data[1:], columns=data[0])
-        self._data = data
+        self._startIndex = ind
+        self._endIndex = (
+            ind[0] + self._data.shape[0],
+            ind[1] + self._data.shape[1] - 1,
+        )
 
     @property
     def spreadsheetId(self):
@@ -484,30 +528,23 @@ class DataRange():
         return self._sheetId
 
     @property
-    def startColumnIndex(self):
+    def startIndex(self):
         """ """
-        return self._startColumnIndex
+        return self._startIndex
 
     @property
-    def startRowIndex(self):
+    def endIndex(self):
         """ """
-        return self._startRowIndex
+        return self._endIndex
 
     @property
-    def endColumnIndex(self):
-        """ """
-        return self._endColumnIndex
-
-    @property
-    def endRowIndex(self):
-        """ """
-        return self._endRowIndex
-
-    @property
-    def df(self):
+    def data(self):
         """ """
         return self._data
 
     def get_loc(self, name):
         """ """
         return self._data.columns.get_loc(name)
+
+    def __repr__(self):
+        return str(self._data)

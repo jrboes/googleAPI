@@ -6,21 +6,19 @@ import google.oauth2.credentials
 import google.auth.transport.requests
 from googleapiclient.discovery import build
 import googleapi.spreadsheet
-gapi = os.path.join(
-    os.path.dirname(reports.__file__),
-    'googleapi/.cred/hytech-google-api.json'
-)
 
 
 class Client():
     """Create a connection to a Google drive API."""
 
-    def __init__(self):
+    def __init__(self, cred_file='../.cred/token.json'):
         self.current_uid = None
         self.sheets = {}
         self.files = {'sheets': [], 'folders': []}
 
         # TODO: Need a process to request a token if not already stored.
+        gapi = os.path.join(
+            os.path.dirname(googleapi.__file__), cred_file)
         with open(gapi, 'r') as f:
             credentials = google.oauth2.credentials.Credentials(**json.load(f))
 
@@ -80,8 +78,7 @@ class Client():
 
         request = self.api['sheets'].spreadsheets().get(spreadsheetId=id)
         response = self._execute_requests(request)
-
-        sheet = reports.googleapi.spreadsheet.SpreadSheet(
+        sheet = googleapi.spreadsheet.SpreadSheet(
             client=self, response=response)
 
         return sheet
