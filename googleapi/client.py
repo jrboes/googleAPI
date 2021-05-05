@@ -1,41 +1,47 @@
-import os
 import time
 import json
-import googleapiclient.errors
-import google.oauth2.credentials
-import google.auth.transport.requests
+import os
 from googleapiclient.discovery import build
+import google.auth.transport.requests
+import google.oauth2.credentials
+import googleapiclient.errors
 import googleapi.spreadsheet
 
 
 class Client():
     """Create a connection to a Google drive API."""
 
-    def __init__(self, cred_file='../.cred/token.json'):
+    def __init__(self, token_path=None):
         self.current_uid = None
         self.sheets = {}
         self.files = {'sheets': [], 'folders': []}
 
-        # TODO: Need a process to request a token if not already stored.
-        gapi = os.path.join(
-            os.path.dirname(googleapi.__file__), cred_file)
-        with open(gapi, 'r') as f:
-            credentials = google.oauth2.credentials.Credentials(**json.load(f))
+        if token_path is None:
+            token_path = os.getenv('VIMEOOTT_API_FILE')
+        token_path = os.path.expanduser(token_path)
 
-        # Refresh the token as necessary
-        if credentials.expired and credentials.refresh_token:
-            credentials.refresh(google.auth.transport.requests.Request())
+        token = None
+        if os.path.exists(token_path):
+            with open(token_path, 'r') as f:
+                token = google.oauth2.credentials.Credentials(**json.load(f))
 
-            with open(gapi, 'w') as f:
-                json.dump(credentials, f)
+            # Refresh the token as necessary
+            if token.expired and token.refresh_token:
+                token.refresh(google.auth.transport.requests.Request())
 
-        # Connect to drive and sheets API
+                with open(token_path, 'w') as f:
+                    json.dump(token, f)
+
+            self._build_api(token)
+
+    def _build_api(self, token):
+        """Connect to drive and sheets API"""
         api = {}
         builds = [['sheets', 'v4'], ['drive', 'v3']]
         for entry in builds:
             api[entry[0]] = build(
                 *entry,
-                credentials=credentials,
+                credentials=token,
                 cache_discovery=False)
 
         self.api = api
@@ -102,7 +108,7 @@ class Client():
         try:
             response = request.execute(num_retries=3)
         except googleapiclient.errors.HttpError as error:
-            if error.resp['status'] == '429' and self.check:
+            if error.resp['status'] == '429':
                 time.sleep(10)
                 response = request.execute(num_retries=3)
             else:

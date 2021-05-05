@@ -131,7 +131,12 @@ class SpreadSheet():
         if isinstance(index, int):
             sheets = [_ for _ in sheets if getattr(_, 'index') == index]
 
-        return sheets[0]
+        if len(sheets) == 0:
+            sheet = self.add_sheet(index)
+        else:
+            sheet = sheets[0]
+
+        return sheet
 
     def add_sheet(self, title, rows=1000, cols=26, freeze=None):
         """ """
@@ -258,7 +263,7 @@ class Sheet():
         response = sh.client._execute_requests(request)
         return response
 
-    def add_values(self, data, range='A1', valueInputOption='RAW'):
+    def set_values(self, data, range='A1', valueInputOption='RAW'):
         """Update the values of a spreadsheet."""
         if isinstance(data, pd.DataFrame):
             _data = np.vstack([data.columns, data.values]).tolist()
@@ -277,6 +282,17 @@ class Sheet():
 
         return data
 
+    def clear_values(self, rng):
+
+        sh = self._spreadsheet
+        request = sh.client.api['sheets'].spreadsheets().values().clear(
+            spreadsheetId=sh.id,
+            range=f'{self.title}!{rng}'
+        )
+        response = sh.client._execute_requests(request)
+
+        return response
+
     def get_values(self, range):
         """Get the values of a spreadsheet."""
         sh = self._spreadsheet
@@ -292,10 +308,9 @@ class Sheet():
         return data
 
     def add_pivot(
-        self, rows, values, columns=None, filters=None,
-        position='A1', datarange=None
-    ):
-        """ """
+            self, rows, values, columns=None, filters=None,
+            position='A1', datarange=None):
+        """TODO """
         if datarange is None:
             datarange = self._spreadsheet._current_datarange
 

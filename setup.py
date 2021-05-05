@@ -7,7 +7,7 @@ with open('requirements.txt', 'r') as f:
 
 
 setup(
-    name='Google API',
+    name='googleapi',
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     description='Google API tools for drive and sheets',
