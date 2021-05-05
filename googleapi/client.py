@@ -17,8 +17,7 @@ class Client():
         self.files = {'sheets': [], 'folders': []}
 
         if token_path is None:
-            token_path = os.getenv('VIMEOOTT_API_FILE')
-        token_path = os.path.expanduser(token_path)
+            token_path = os.getenv('GOOGLE_TOKEN_PATH')
 
         token = None
         if os.path.exists(token_path):
